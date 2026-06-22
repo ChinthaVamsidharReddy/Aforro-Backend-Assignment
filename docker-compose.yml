@@ -1,0 +1,109 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aforro
+      POSTGRES_USER: aforro
+      POSTGRES_PASSWORD: aforro
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aforro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput --clear &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120"
+    ports:
+      - "8000:8000"
+    environment:
+      SECRET_KEY: "change-me-in-production"
+      DEBUG: "False"
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      POSTGRES_DB: aforro
+      POSTGRES_USER: aforro
+      POSTGRES_PASSWORD: aforro
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+  worker:
+    build: .
+    command: >
+      sh -c "celery -A config worker --loglevel=info --concurrency=4
+             -E --broker-connection-retry-on-startup=true"
+    environment:
+      SECRET_KEY: "change-me-in-production"
+      DEBUG: "False"
+      POSTGRES_DB: aforro
+      POSTGRES_USER: aforro
+      POSTGRES_PASSWORD: aforro
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+  beat:
+    build: .
+    # Uses Celery's built-in file-based scheduler (no extra package needed).
+    # Schedule is stored in /tmp/celerybeat-schedule inside the container.
+    command: >
+      sh -c "celery -A config beat --loglevel=info
+             --broker-connection-retry-on-startup=true
+             -s /tmp/celerybeat-schedule"
+    environment:
+      SECRET_KEY: "change-me-in-production"
+      DEBUG: "False"
+      POSTGRES_DB: aforro
+      POSTGRES_USER: aforro
+      POSTGRES_PASSWORD: aforro
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
+  redis_data:
