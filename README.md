@@ -281,5 +281,5 @@ celery -A config beat   --loglevel=info
 - API authentication (JWT / OAuth2).
 - Structured logging + Sentry integration.
 - CI/CD pipeline (GitHub Actions).
-#   A f o r r o - B a c k e n d - A s s i g n m e n t  
+ 
  
